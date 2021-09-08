@@ -1,0 +1,134 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: "EC2自動停止" 
+Resources: 
+  # ------------------------------------------------------------#
+  # ResourceGroup
+  # ------------------------------------------------------------#  
+  ResourceGroup:
+    Type: AWS::ResourceGroups::Group
+    Properties: 
+      Name: test
+      ResourceQuery: 
+        Type: TAG_FILTERS_1_0
+        Query:
+          ResourceTypeFilters:
+            - AWS::EC2::Instance
+            #- AWS::RDS::DBInstance
+          TagFilters:
+            - Key: auto
+              Values:
+                - ec2
+  # ------------------------------------------------------------#
+  # IAM Role
+  # ------------------------------------------------------------#
+  IAMRole:
+    Type: AWS::IAM::Role
+    Properties: 
+      AssumeRolePolicyDocument: 
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ssm.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      ManagedPolicyArns: 
+        - arn:aws:iam::aws:policy/AmazonEC2FullAccess
+        - arn:aws:iam::aws:policy/AWSResourceGroupsReadOnlyAccess
+        - arn:aws:iam::aws:policy/service-role/AmazonSSMAutomationRole
+      MaxSessionDuration: 3600 #秒で記述
+      RoleName: testrole2
+  # ------------------------------------------------------------#
+  #  MaintenanceWindow;Stop-EC2
+  # ------------------------------------------------------------#
+  MaintenanceWindow-stopec2:
+    Type: AWS::SSM::MaintenanceWindow
+    Properties: 
+      AllowUnassociatedTargets: True
+      Cutoff: 0
+      Description: "毎日21時にEC2を停止します"
+      Duration: 1
+      Name: pm9-stop-ec2
+      Schedule: cron(0 00 21 ? * * *)
+      ScheduleTimezone: Asia/Tokyo
+
+  MaintenanceWindowTarget-stopec2:
+    Type: AWS::SSM::MaintenanceWindowTarget
+    Properties: 
+      Description: "自動停止を適用するターゲットを定義します"
+      Name: EC2
+      ResourceType: RESOURCE_GROUP
+      Targets: 
+      - Key: resource-groups:Name
+        Values:
+        - test-resource
+      WindowId: {Ref: MaintenanceWindow-stopec2 }
+  
+  MaintenanceWindowTask-stopec2:
+    Type: AWS::SSM::MaintenanceWindowTask
+    Properties: 
+      Description: "EC2の自動停止のタスクです"
+      MaxConcurrency: 1
+      MaxErrors: 1
+      Name: Schedule-stop-ec2
+      Priority: 1
+      ServiceRoleArn: !Sub "arn:aws:iam::${AWS::AccountId}:role/${IAMRole}" 
+      Targets: 
+        - Key: WindowTargetIds
+          Values:
+            - {Ref: MaintenanceWindowTarget-stopec2}
+      TaskArn: Schedule-stop-ec2  #ドキュメントの名前
+      TaskInvocationParameters:
+       MaintenanceWindowAutomationParameters:
+         Parameters: { "instanceId": ["{{RESOURCE_ID}}"],"AutomationAssumeRole": [""]}
+      TaskType: AUTOMATION
+      WindowId: {Ref: MaintenanceWindow-stopec2 }
+  # ------------------------------------------------------------#
+  #  MaintenanceWindow;Start-EC2
+  # ------------------------------------------------------------#
+  MaintenanceWindow-startec2:
+    Type: AWS::SSM::MaintenanceWindow
+    Properties: 
+      AllowUnassociatedTargets: True
+      Cutoff: 0
+      Description: "毎日9時にEC2を起動します"
+      Duration: 1
+      Name: am9-start-ec2
+      Schedule: cron(0 00 9 ? * * *)
+      ScheduleTimezone: Asia/Tokyo
+
+  MaintenanceWindowTarget-startec2:
+    Type: AWS::SSM::MaintenanceWindowTarget
+    Properties: 
+      Description: "自動起動を適用するターゲットを定義します"
+      Name: EC2
+      ResourceType: RESOURCE_GROUP
+      Targets: 
+      - Key: resource-groups:Name
+        Values:
+        - test-resource
+      WindowId: {Ref: MaintenanceWindow-startec2 }
+  
+  MaintenanceWindowTask-startec2:
+    Type: AWS::SSM::MaintenanceWindowTask
+    Properties: 
+      Description: "EC2の自動起動のタスクです"
+      MaxConcurrency: 1
+      MaxErrors: 1
+      Name: Schedule-start-ec2
+      Priority: 1
+      ServiceRoleArn: !Sub "arn:aws:iam::${AWS::AccountId}:role/${IAMRole}" 
+      Targets: 
+        - Key: WindowTargetIds
+          Values:
+            - {Ref: MaintenanceWindowTarget-startec2}
+      TaskArn: Schedule-start-ec2  #ドキュメントの名前
+      TaskInvocationParameters:
+       MaintenanceWindowAutomationParameters:
+         Parameters: { "instanceId": ["{{RESOURCE_ID}}"],"AutomationAssumeRole": [""]}
+      TaskType: AUTOMATION
+      WindowId: {Ref: MaintenanceWindow-startec2 }
+      
+      
+  
